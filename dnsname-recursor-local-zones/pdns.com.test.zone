@@ -1,0 +1,5 @@
+pdns.com. 3600 IN SOA ns.example.net. hostmaster.example.net. 1 3600 1800 1209600 300
+pdns.com. 20 IN NS ns.answer-cname-in-local.example.net.
+
+www.pdns.com. 20 IN A 127.52.53.54
+

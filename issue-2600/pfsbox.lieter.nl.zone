@@ -1,0 +1,13 @@
+$TTL    86400 ; 24 hours
+$ORIGIN pfsbox.lieter.nl.
+@  1D  IN  SOA localhost.lieter.nl hostmaster.lieter.nl. (
+                              2002022401 ; serial
+                              3H ; refresh
+                              15 ; retry
+                              1w ; expire
+                              3h ; minimum
+                             )
+       IN  NS     localhost.lieter.nl.
+
+vip-metropole    IN  A 10.0.0.1
+vip-reunion    IN  A 10.1.1.1

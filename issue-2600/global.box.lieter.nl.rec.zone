@@ -1,0 +1,14 @@
+$TTL    86400 ; 24 hours could have been written as 24h or 1d
+; $TTL used for all RRs without explicit TTL value
+$ORIGIN global.box.lieter.nl.
+@  1D  IN  SOA localhost.lieter.nl hostmaster.lieter.nl. (
+                              2002022401 ; serial
+                              3H ; refresh
+                              15 ; retry
+                              1w ; expire
+                              3h ; minimum
+                             )
+       IN  NS     localhost.lieter.nl.
+
+; server host definitions
+pfs    IN  CNAME      vip-reunion.pfsbox.lieter.nl.

@@ -1,0 +1,3 @@
+# google
++google.com=8.8.8.8
++microsoft.com=8.8.8.8 # MS
