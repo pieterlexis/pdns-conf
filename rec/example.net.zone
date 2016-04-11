@@ -1,0 +1,6 @@
+$ORIGIN example.net.
+$TTL 300
+
+@ IN SOA a.example.net. a.example.net. 2 3 4 5 6
+
+@ IN A 10.0.0.3

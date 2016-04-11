@@ -1,0 +1,5 @@
+@  900 SOA  ns0.example.com. domain.example.com.  2016010401 28800 7200 604800 86402
+@  900 NS ns0.example.com.
+c  900 NS ns0.example.com.
+ns0 900 A 127.0.0.1
+

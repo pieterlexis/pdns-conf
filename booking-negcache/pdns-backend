@@ -1,0 +1,159 @@
+#!/usr/bin/python2
+
+import logging
+import logging.handlers
+import os
+import platform
+import re
+import select
+import signal
+import sys
+import syslog
+
+# Non-blocking Syslog logging handler
+class SysLogLibHandler(logging.Handler):
+    """A logging handler that emits messages to syslog.syslog."""
+    priority_map = {
+        "DEBUG" :    syslog.LOG_DEBUG,
+        "INFO" :     syslog.LOG_INFO,
+        "WARNING" :  syslog.LOG_WARNING,
+        "ERROR" :    syslog.LOG_ERR,
+        "CRITICAL" : syslog.LOG_CRIT,
+    }
+
+    def __init__(self, facility):
+        try:
+            syslog.openlog(os.path.basename(sys.argv[0]),logoption=syslog.LOG_PID | syslog.LOG_NDELAY, facility='daemon')
+        except Exception:
+            pass
+        logging.Handler.__init__(self)
+
+    def emit(self, record):
+        syslog.syslog(self.priority_map[record.levelname], self.format(record))
+
+class Daemon(object):
+    addresses = {
+        'www1.c.example.com': '127.0.0.1',
+        'www2.c.example.com': '127.0.0.2',
+    }
+
+    def __init__(self):
+        # 0 - normal operation
+        # 1 - SIGHUP received => restarting
+        self.restarting = 0
+        self.exiting = False
+        self.abi_version = None
+        signal.signal(signal.SIGINT, self.handle_sigint)
+        signal.signal(signal.SIGTERM, self.handle_sigint)
+        signal.signal(signal.SIGIO, self.handle_sigint)
+        signal.signal(signal.SIGPIPE, self.handle_sigint)
+        self.logger = logging.getLogger()
+        if sys.stdout.isatty():
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter("%(filename)s[%(process)d]: %(message)s")
+            handler.setFormatter(formatter)
+        else:
+            handler = SysLogLibHandler(facility='daemon')
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+
+    def handle_sigint(self, signum, frame):
+        self.exiting = True
+        self.logger.info("Caught signal %d" % signum)
+
+    def handle_sighup(self, signum, frame):
+        if self.restarting == 0:
+            self.restarting = 1
+            self.logger.info("Caught signal %d" % signum)
+
+    def process_requests(self):
+        self.logger.info("Backend ready using %s (%s %s)" % (sys.executable, platform.python_implementation(), platform.python_version()))
+        signal.signal(signal.SIGHUP, self.handle_sighup)
+        while not self.exiting:
+            if self.restarting:
+                signal.signal(signal.SIGHUP, signal.SIG_IGN)
+                self.logger.info("Restarting backend")
+                os.execl(sys.argv[0],*sys.argv)
+            try:
+                rin, rout, rerr = select.select([sys.stdin], [], [], 5)
+            except select.error as e:
+                # Ignore EINTR
+                if e[0] == 4: continue
+                else: raise
+            if sys.stdin in rin:
+                req = sys.stdin.readline().strip()
+                ans = self.process_single_request(req)
+                if ans:
+                    sys.stdout.write(ans + "\n")
+                    sys.stdout.flush()
+                self.logger.info("[IN] " + req.replace('\t', '    ').replace('\n', ' - '))
+                self.logger.info("[OUT] " + ans.replace('\t', '    ').replace('\n', ' - '))
+        self.logger.info("Backend exiting")
+
+    def process_single_request(self, req):
+        if req == '':
+            self.logger.info("EOF from powerdns")
+            self.exiting = True
+            return ""
+
+        req = req.split('\t')
+        reqtype = req[0].lower()
+        req = req[1:]
+        return getattr(self, 'handle_' + reqtype)(*req)
+
+    def handle_helo(self, abi_version):
+        self.abi_version = int(abi_version)
+        self.logger.info("Powerdns says hi, API version %d" % self.abi_version)
+        if self.abi_version not in (1,2):
+            return "FAIL"
+        return "OK\tbooking powerdns backend started"
+
+    def handle_axfr(self, id):
+        return "FAIL"
+
+    def handle_ping(self):
+        return "END"
+
+    def handle_q(self, qname, qclass, qtype, id, remote_ip, local_ip=None):
+        if qclass != 'IN' or remote_ip == '0.0.0.0':
+            return "END"
+
+        qname_l = qname.lower()
+        ret = []
+
+        if qtype == 'ANY':
+            self.handle_soa(qname, ret)
+            self.handle_ns(qname, ret)
+            self.handle_a(qname, ret)
+        elif hasattr(self, 'handle_' + qtype.lower()):
+            getattr(self, 'handle_' + qtype.lower())(qname, ret)
+        else:
+            self.logger.error("Cannot handle %s queries" % qtype)
+        return "\n".join(ret + ['END'])
+
+    def handle_soa(self, qname, ret):
+        if qname.lower() == 'c.example.com':
+            soa = "ns0.example.com. postmaster.example.com. 2013112600 14400 900 3628800 300"
+            ret.append("DATA\t%s\tIN\tSOA\t%d\t-1\t%s" % (qname, 300,  soa))
+
+    def handle_ns(self, qname, ret):
+        if qname.lower() == 'c.example.com':
+            for i in range(4):
+                ret.append("DATA\t%s\tIN\tNS\t%d\t-1\tns%d.example.com." % (qname, 900,  i))
+
+    def handle_txt(self, qname, ret):
+        pass
+
+    def handle_srv(self, qname, ret):
+        pass
+
+    def handle_a(self, qname, ret):
+        if qname in self.addresses:
+            ret.append("DATA\t%s\tIN\tA\t600\t-1\t%s" % (qname, self.addresses[qname]))
+
+if __name__ == '__main__':
+    daemon = Daemon()
+    try:
+        daemon.process_requests()
+    except Exception:
+        daemon.logger.exception("Exception occured, exiting")

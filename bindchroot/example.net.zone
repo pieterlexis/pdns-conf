@@ -1,0 +1,12 @@
+$ORIGIN example.net.
+$TTL 3600
+
+@	IN	SOA	ns1.example.net. pieter\.lexis.powerdns.com. (
+                                2015102701 ; serial
+                                1H ; refresh
+                                15 ; retry
+                                1W ; expire
+                                2H ; minimum
+
+)
+
